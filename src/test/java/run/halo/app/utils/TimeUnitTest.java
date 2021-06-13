@@ -1,9 +1,8 @@
 package run.halo.app.utils;
 
-import lombok.extern.slf4j.Slf4j;
-import org.junit.Test;
-
 import java.util.concurrent.TimeUnit;
+import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.Test;
 
 /**
  * Time unit test
@@ -12,13 +11,13 @@ import java.util.concurrent.TimeUnit;
  * @date 19-4-29
  */
 @Slf4j
-public class TimeUnitTest {
+class TimeUnitTest {
 
     @Test
-    public void convertTest() {
-        Long millis = TimeUnit.DAYS.toMillis(30);
+    void convertTest() {
+        long millis = TimeUnit.DAYS.toMillis(30);
 
         log.debug("" + millis);
-        log.debug("" + millis.intValue());
+        log.debug("" + (int) millis);
     }
 }

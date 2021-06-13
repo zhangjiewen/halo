@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<#setting locale="en_US">
 <rss version="2.0">
     <channel>
         <#if category??>
@@ -20,15 +21,15 @@
                 <description>${user.description!}</description>
             </#if>
         </#if>
-        <language>zh-CN</language>
         <generator>Halo ${version!}</generator>
+        <lastBuildDate>${lastModified?string('EEE, dd MMM yyyy HH:mm:ss z')}</lastBuildDate>
         <#if posts?? && posts?size gt 0>
             <#list posts as post>
                 <item>
                     <title>
                         <![CDATA[${post.title!}]]>
                     </title>
-                    <link>${post.fullPath!}</link>
+                    <link><#if !globalAbsolutePathEnabled!true>${blog_url!}</#if>${post.fullPath!}</link>
                     <description>
                         <#if (options.rss_content_type!'full') == 'full'>
                             <![CDATA[${post.formatContent!}]]>
@@ -36,7 +37,7 @@
                             <![CDATA[${post.summary!}]]>
                         </#if>
                     </description>
-                    <pubDate>${post.createTime?iso_local}</pubDate>
+                    <pubDate>${post.createTime?string('EEE, dd MMM yyyy HH:mm:ss z')}</pubDate>
                 </item>
             </#list>
         </#if>

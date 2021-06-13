@@ -1,5 +1,6 @@
 package run.halo.app.security.resolver;
 
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.MethodParameter;
 import org.springframework.lang.Nullable;
@@ -12,8 +13,6 @@ import run.halo.app.model.entity.User;
 import run.halo.app.security.authentication.Authentication;
 import run.halo.app.security.context.SecurityContextHolder;
 import run.halo.app.security.support.UserDetail;
-
-import java.util.Optional;
 
 /**
  * Authentication argument resolver.
@@ -38,13 +37,16 @@ public class AuthenticationArgumentResolver implements HandlerMethodArgumentReso
 
     @Override
     @Nullable
-    public Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer, NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) {
+    public Object resolveArgument(MethodParameter parameter,
+        @Nullable ModelAndViewContainer mavContainer, NativeWebRequest webRequest,
+        @Nullable WebDataBinderFactory binderFactory) {
         log.debug("Handle AuthenticationArgument");
 
         Class<?> parameterType = parameter.getParameterType();
 
-        Authentication authentication = Optional.ofNullable(SecurityContextHolder.getContext().getAuthentication())
-            .orElseThrow(() -> new AuthenticationException("You haven't signed in yet"));
+        Authentication authentication =
+            Optional.ofNullable(SecurityContextHolder.getContext().getAuthentication())
+                .orElseThrow(() -> new AuthenticationException("You haven't signed in yet"));
 
         if (Authentication.class.isAssignableFrom(parameterType)) {
             return authentication;

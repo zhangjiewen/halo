@@ -14,7 +14,7 @@
             <subtitle type="text">${user.description!}</subtitle>
         </#if>
     </#if>
-    <updated>${.now?iso_local}</updated>
+    <updated>${lastModified?iso_local}</updated>
     <#if category??>
         <id>${category.fullPath!}</id>
     <#else>
@@ -33,7 +33,7 @@
         <#list posts as post>
             <entry>
                 <title><![CDATA[${post.title!}]]></title>
-                <link rel="alternate" type="text/html" href="${post.fullPath!}" />
+                <link rel="alternate" type="text/html" href="<#if !globalAbsolutePathEnabled!true>${blog_url!}</#if>${post.fullPath!}" />
                 <id>tag:${blog_url!},${post.createTime?string('yyyy-MM-dd')}:${post.slug!}</id>
                 <published>${post.createTime?iso_local}</published>
                 <updated>${post.editTime?iso_local}</updated>

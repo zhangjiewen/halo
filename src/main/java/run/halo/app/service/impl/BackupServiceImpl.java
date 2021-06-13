@@ -1,11 +1,36 @@
 package run.halo.app.service.impl;
 
+import static run.halo.app.model.support.HaloConst.HALO_BACKUP_MARKDOWN_PREFIX;
+import static run.halo.app.model.support.HaloConst.HALO_BACKUP_PREFIX;
+import static run.halo.app.model.support.HaloConst.HALO_DATA_EXPORT_PREFIX;
+import static run.halo.app.utils.DateTimeUtils.HORIZONTAL_LINE_DATETIME_FORMATTER;
+import static run.halo.app.utils.FileUtils.checkDirectoryTraversal;
+
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.IoUtil;
 import cn.hutool.core.io.file.FileWriter;
 import cn.hutool.core.util.CharsetUtil;
 import cn.hutool.core.util.IdUtil;
-import com.alibaba.fastjson.JSONObject;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.zip.ZipOutputStream;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.ApplicationEventPublisher;
@@ -20,33 +45,66 @@ import run.halo.app.event.options.OptionUpdatedEvent;
 import run.halo.app.event.theme.ThemeUpdatedEvent;
 import run.halo.app.exception.NotFoundException;
 import run.halo.app.exception.ServiceException;
+import run.halo.app.handler.file.FileHandler;
 import run.halo.app.model.dto.BackupDTO;
 import run.halo.app.model.dto.post.BasePostDetailDTO;
-import run.halo.app.model.entity.*;
+import run.halo.app.model.entity.Attachment;
+import run.halo.app.model.entity.Category;
+import run.halo.app.model.entity.CommentBlackList;
+import run.halo.app.model.entity.Journal;
+import run.halo.app.model.entity.JournalComment;
+import run.halo.app.model.entity.Link;
+import run.halo.app.model.entity.Log;
+import run.halo.app.model.entity.Menu;
+import run.halo.app.model.entity.Option;
+import run.halo.app.model.entity.Photo;
+import run.halo.app.model.entity.Post;
+import run.halo.app.model.entity.PostCategory;
+import run.halo.app.model.entity.PostComment;
+import run.halo.app.model.entity.PostMeta;
+import run.halo.app.model.entity.PostTag;
+import run.halo.app.model.entity.Sheet;
+import run.halo.app.model.entity.SheetComment;
+import run.halo.app.model.entity.SheetMeta;
+import run.halo.app.model.entity.Tag;
+import run.halo.app.model.entity.ThemeSetting;
+import run.halo.app.model.entity.User;
+import run.halo.app.model.params.PostMarkdownParam;
 import run.halo.app.model.support.HaloConst;
+import run.halo.app.model.vo.PostMarkdownVO;
 import run.halo.app.security.service.OneTimeTokenService;
-import run.halo.app.service.*;
+import run.halo.app.service.AttachmentService;
+import run.halo.app.service.BackupService;
+import run.halo.app.service.CategoryService;
+import run.halo.app.service.CommentBlackListService;
+import run.halo.app.service.JournalCommentService;
+import run.halo.app.service.JournalService;
+import run.halo.app.service.LinkService;
+import run.halo.app.service.LogService;
+import run.halo.app.service.MenuService;
+import run.halo.app.service.OptionService;
+import run.halo.app.service.PhotoService;
+import run.halo.app.service.PostCategoryService;
+import run.halo.app.service.PostCommentService;
+import run.halo.app.service.PostMetaService;
+import run.halo.app.service.PostService;
+import run.halo.app.service.PostTagService;
+import run.halo.app.service.SheetCommentService;
+import run.halo.app.service.SheetMetaService;
+import run.halo.app.service.SheetService;
+import run.halo.app.service.TagService;
+import run.halo.app.service.ThemeSettingService;
+import run.halo.app.service.UserService;
+import run.halo.app.utils.DateTimeUtils;
 import run.halo.app.utils.HaloUtils;
-
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Collections;
-import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import run.halo.app.utils.JsonUtils;
 
 /**
  * Backup service implementation.
  *
  * @author johnniang
  * @author ryanwang
+ * @author Raremaa
  * @date 2019-04-26
  */
 @Service
@@ -55,9 +113,12 @@ public class BackupServiceImpl implements BackupService {
 
     private static final String BACKUP_RESOURCE_BASE_URI = "/api/admin/backups/work-dir";
 
+    private static final String DATA_EXPORT_MARKDOWN_BASE_URI =
+        "/api/admin/backups/markdown/export";
+
     private static final String DATA_EXPORT_BASE_URI = "/api/admin/backups/data";
 
-    private static final String LINE_SEPARATOR = System.getProperty("line.separator");
+    private static final String UPLOAD_SUB_DIR = "upload/";
 
     private final AttachmentService attachmentService;
 
@@ -107,7 +168,17 @@ public class BackupServiceImpl implements BackupService {
 
     private final ApplicationEventPublisher eventPublisher;
 
-    public BackupServiceImpl(AttachmentService attachmentService, CategoryService categoryService, CommentBlackListService commentBlackListService, JournalService journalService, JournalCommentService journalCommentService, LinkService linkService, LogService logService, MenuService menuService, OptionService optionService, PhotoService photoService, PostService postService, PostCategoryService postCategoryService, PostCommentService postCommentService, PostMetaService postMetaService, PostTagService postTagService, SheetService sheetService, SheetCommentService sheetCommentService, SheetMetaService sheetMetaService, TagService tagService, ThemeSettingService themeSettingService, UserService userService, OneTimeTokenService oneTimeTokenService, HaloProperties haloProperties, ApplicationEventPublisher eventPublisher) {
+    public BackupServiceImpl(AttachmentService attachmentService, CategoryService categoryService,
+        CommentBlackListService commentBlackListService, JournalService journalService,
+        JournalCommentService journalCommentService, LinkService linkService, LogService logService,
+        MenuService menuService, OptionService optionService, PhotoService photoService,
+        PostService postService, PostCategoryService postCategoryService,
+        PostCommentService postCommentService, PostMetaService postMetaService,
+        PostTagService postTagService, SheetService sheetService,
+        SheetCommentService sheetCommentService, SheetMetaService sheetMetaService,
+        TagService tagService, ThemeSettingService themeSettingService, UserService userService,
+        OneTimeTokenService oneTimeTokenService, HaloProperties haloProperties,
+        ApplicationEventPublisher eventPublisher) {
         this.attachmentService = attachmentService;
         this.categoryService = categoryService;
         this.commentBlackListService = commentBlackListService;
@@ -134,19 +205,6 @@ public class BackupServiceImpl implements BackupService {
         this.eventPublisher = eventPublisher;
     }
 
-    /**
-     * Sanitizes the specified file name.
-     *
-     * @param unSanitized the specified file name
-     * @return sanitized file name
-     */
-    public static String sanitizeFilename(final String unSanitized) {
-        return unSanitized.
-            replaceAll("[^(a-zA-Z0-9\\u4e00-\\u9fa5\\.)]", "").
-            replaceAll("[\\?\\\\/:|<>\\*\\[\\]\\(\\)\\$%\\{\\}@~\\.]", "").
-            replaceAll("\\s", "");
-    }
-
     @Override
     public BasePostDetailDTO importMarkdown(MultipartFile file) throws IOException {
 
@@ -154,7 +212,6 @@ public class BackupServiceImpl implements BackupService {
         String markdown = IoUtil.read(file.getInputStream(), StandardCharsets.UTF_8);
 
         // TODO sheet import
-
         return postService.importMarkdown(markdown, file.getOriginalFilename());
     }
 
@@ -163,14 +220,19 @@ public class BackupServiceImpl implements BackupService {
         // Zip work directory to temporary file
         try {
             // Create zip path for halo zip
-            String haloZipFileName = HaloConst.HALO_BACKUP_PREFIX +
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss-")) +
-                IdUtil.simpleUUID().hashCode() + ".zip";
+            String haloZipFileName = HALO_BACKUP_PREFIX
+                + DateTimeUtils.format(LocalDateTime.now(), HORIZONTAL_LINE_DATETIME_FORMATTER)
+                + IdUtil.simpleUUID().hashCode() + ".zip";
             // Create halo zip file
-            Path haloZipPath = Files.createFile(Paths.get(haloProperties.getBackupDir(), haloZipFileName));
+            Path haloZipFilePath = Paths.get(haloProperties.getBackupDir(), haloZipFileName);
+            if (!Files.exists(haloZipFilePath.getParent())) {
+                Files.createDirectories(haloZipFilePath.getParent());
+            }
+            Path haloZipPath = Files.createFile(haloZipFilePath);
 
             // Zip halo
-            run.halo.app.utils.FileUtils.zip(Paths.get(this.haloProperties.getWorkDir()), haloZipPath);
+            run.halo.app.utils.FileUtils
+                .zip(Paths.get(this.haloProperties.getWorkDir()), haloZipPath);
 
             // Build backup dto
             return buildBackupDto(BACKUP_RESOURCE_BASE_URI, haloZipPath);
@@ -190,20 +252,25 @@ public class BackupServiceImpl implements BackupService {
         // Build backup dto
         try (Stream<Path> subPathStream = Files.list(backupParentPath)) {
             return subPathStream
-                .filter(backupPath -> StringUtils.startsWithIgnoreCase(backupPath.getFileName().toString(), HaloConst.HALO_BACKUP_PREFIX))
+                .filter(backupPath -> StringUtils
+                    .startsWithIgnoreCase(backupPath.getFileName().toString(),
+                        HALO_BACKUP_PREFIX))
                 .map(backupPath -> buildBackupDto(BACKUP_RESOURCE_BASE_URI, backupPath))
-                .sorted((leftBackup, rightBackup) -> {
-                    // Sort the result
-                    if (leftBackup.getUpdateTime() < rightBackup.getUpdateTime()) {
-                        return 1;
-                    } else if (leftBackup.getUpdateTime() > rightBackup.getUpdateTime()) {
-                        return -1;
-                    }
-                    return 0;
-                }).collect(Collectors.toList());
+                .sorted(Comparator.comparingLong(BackupDTO::getUpdateTime).reversed())
+                .collect(Collectors.toList());
         } catch (IOException e) {
             throw new ServiceException("Failed to fetch backups", e);
         }
+    }
+
+    @Override
+    public Optional<BackupDTO> getBackup(@NonNull Path backupFilePath, @NonNull BackupType type) {
+        if (Files.notExists(backupFilePath)) {
+            return Optional.empty();
+        }
+
+        BackupDTO backupDto = buildBackupDto(type.getBaseUri(), backupFilePath);
+        return Optional.of(backupDto);
     }
 
     @Override
@@ -216,7 +283,7 @@ public class BackupServiceImpl implements BackupService {
         Path backupPath = backupRootPath.resolve(fileName);
 
         // Check directory traversal
-        run.halo.app.utils.FileUtils.checkDirectoryTraversal(backupRootPath, backupPath);
+        checkDirectoryTraversal(backupRootPath, backupPath);
 
         try {
             // Delete backup file
@@ -245,7 +312,7 @@ public class BackupServiceImpl implements BackupService {
             Path backupFilePath = Paths.get(basePath, fileName).normalize();
 
             // Check directory traversal
-            run.halo.app.utils.FileUtils.checkDirectoryTraversal(backupParentPath, backupFilePath);
+            checkDirectoryTraversal(backupParentPath, backupFilePath);
 
             // Build url resource
             Resource backupResource = new UrlResource(backupFilePath.toUri());
@@ -258,17 +325,18 @@ public class BackupServiceImpl implements BackupService {
         } catch (MalformedURLException e) {
             throw new NotFoundException("The file " + fileName + " was not found", e);
         } catch (IOException e) {
-            throw new ServiceException("Failed to create backup parent path: " + backupParentPath, e);
+            throw new ServiceException("Failed to create backup parent path: " + backupParentPath,
+                e);
         }
     }
 
     @Override
     public BackupDTO exportData() {
-        JSONObject data = new JSONObject();
+        Map<String, Object> data = new HashMap<>();
         data.put("version", HaloConst.HALO_VERSION);
         data.put("export_date", DateUtil.now());
         data.put("attachments", attachmentService.listAll());
-        data.put("categories", categoryService.listAll());
+        data.put("categories", categoryService.listAll(true));
         data.put("comment_black_list", commentBlackListService.listAll());
         data.put("journals", journalService.listAll());
         data.put("journal_comments", journalCommentService.listAll());
@@ -290,14 +358,18 @@ public class BackupServiceImpl implements BackupService {
         data.put("user", userService.listAll());
 
         try {
-            String haloDataFileName = HaloConst.HALO_DATA_EXPORT_PREFIX +
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss-")) +
-                IdUtil.simpleUUID().hashCode() + ".json";
+            String haloDataFileName = HALO_DATA_EXPORT_PREFIX
+                + DateTimeUtils.format(LocalDateTime.now(), HORIZONTAL_LINE_DATETIME_FORMATTER)
+                + IdUtil.simpleUUID().hashCode() + ".json";
 
-            Path haloDataPath = Files.createFile(Paths.get(haloProperties.getDataExportDir(), haloDataFileName));
+            Path haloDataFilePath = Paths.get(haloProperties.getDataExportDir(), haloDataFileName);
+            if (!Files.exists(haloDataFilePath.getParent())) {
+                Files.createDirectories(haloDataFilePath.getParent());
+            }
+            Path haloDataPath = Files.createFile(haloDataFilePath);
 
             FileWriter fileWriter = new FileWriter(haloDataPath.toFile(), CharsetUtil.UTF_8);
-            fileWriter.write(data.toJSONString());
+            fileWriter.write(JsonUtils.objectToJson(data));
 
             return buildBackupDto(DATA_EXPORT_BASE_URI, haloDataPath);
         } catch (IOException e) {
@@ -315,17 +387,12 @@ public class BackupServiceImpl implements BackupService {
 
         try (Stream<Path> subPathStream = Files.list(exportedDataParentPath)) {
             return subPathStream
-                .filter(backupPath -> StringUtils.startsWithIgnoreCase(backupPath.getFileName().toString(), HaloConst.HALO_DATA_EXPORT_PREFIX))
+                .filter(backupPath -> StringUtils
+                    .startsWithIgnoreCase(backupPath.getFileName().toString(),
+                        HALO_DATA_EXPORT_PREFIX))
                 .map(backupPath -> buildBackupDto(DATA_EXPORT_BASE_URI, backupPath))
-                .sorted((leftBackup, rightBackup) -> {
-                    // Sort the result
-                    if (leftBackup.getUpdateTime() < rightBackup.getUpdateTime()) {
-                        return 1;
-                    } else if (leftBackup.getUpdateTime() > rightBackup.getUpdateTime()) {
-                        return -1;
-                    }
-                    return 0;
-                }).collect(Collectors.toList());
+                .sorted(Comparator.comparingLong(BackupDTO::getUpdateTime).reversed())
+                .collect(Collectors.toList());
         } catch (IOException e) {
             throw new ServiceException("Failed to fetch exported data", e);
         }
@@ -339,7 +406,7 @@ public class BackupServiceImpl implements BackupService {
 
         Path backupPath = dataExportRootPath.resolve(fileName);
 
-        run.halo.app.utils.FileUtils.checkDirectoryTraversal(dataExportRootPath, backupPath);
+        checkDirectoryTraversal(dataExportRootPath, backupPath);
 
         try {
             // Delete backup file
@@ -355,71 +422,224 @@ public class BackupServiceImpl implements BackupService {
     public void importData(MultipartFile file) throws IOException {
         String jsonContent = IoUtil.read(file.getInputStream(), StandardCharsets.UTF_8);
 
-        JSONObject data = JSONObject.parseObject(jsonContent);
+        ObjectMapper mapper = JsonUtils.createDefaultJsonMapper();
+        TypeReference<HashMap<String, Object>> typeRef =
+            new TypeReference<>() {
+            };
+        HashMap<String, Object> data = mapper.readValue(jsonContent, typeRef);
 
-        List<Attachment> attachments = data.getJSONArray("attachments").toJavaList(Attachment.class);
+        List<Attachment> attachments = Arrays.asList(mapper
+            .readValue(mapper.writeValueAsString(data.get("attachments")), Attachment[].class));
         attachmentService.createInBatch(attachments);
 
-        List<Category> categories = data.getJSONArray("categories").toJavaList(Category.class);
+        List<Category> categories = Arrays.asList(
+            mapper.readValue(mapper.writeValueAsString(data.get("categories")), Category[].class));
         categoryService.createInBatch(categories);
 
-        List<Tag> tags = data.getJSONArray("tags").toJavaList(Tag.class);
+        List<Tag> tags = Arrays
+            .asList(mapper.readValue(mapper.writeValueAsString(data.get("tags")), Tag[].class));
         tagService.createInBatch(tags);
 
-        List<CommentBlackList> commentBlackList = data.getJSONArray("comment_black_list").toJavaList(CommentBlackList.class);
+        List<CommentBlackList> commentBlackList = Arrays.asList(mapper
+            .readValue(mapper.writeValueAsString(data.get("comment_black_list")),
+                CommentBlackList[].class));
         commentBlackListService.createInBatch(commentBlackList);
 
-        List<Journal> journals = data.getJSONArray("journals").toJavaList(Journal.class);
+        List<Journal> journals = Arrays.asList(
+            mapper.readValue(mapper.writeValueAsString(data.get("journals")), Journal[].class));
         journalService.createInBatch(journals);
 
-        List<JournalComment> journalComments = data.getJSONArray("journal_comments").toJavaList(JournalComment.class);
+        List<JournalComment> journalComments = Arrays.asList(mapper
+            .readValue(mapper.writeValueAsString(data.get("journal_comments")),
+                JournalComment[].class));
         journalCommentService.createInBatch(journalComments);
 
-        List<Link> links = data.getJSONArray("links").toJavaList(Link.class);
+        List<Link> links = Arrays
+            .asList(mapper.readValue(mapper.writeValueAsString(data.get("links")), Link[].class));
         linkService.createInBatch(links);
 
-        List<Log> logs = data.getJSONArray("logs").toJavaList(Log.class);
+        List<Log> logs = Arrays
+            .asList(mapper.readValue(mapper.writeValueAsString(data.get("logs")), Log[].class));
         logService.createInBatch(logs);
 
-        List<Menu> menus = data.getJSONArray("menus").toJavaList(Menu.class);
+        List<Menu> menus = Arrays
+            .asList(mapper.readValue(mapper.writeValueAsString(data.get("menus")), Menu[].class));
         menuService.createInBatch(menus);
 
-        List<Option> options = data.getJSONArray("options").toJavaList(Option.class);
+        List<Option> options = Arrays.asList(
+            mapper.readValue(mapper.writeValueAsString(data.get("options")), Option[].class));
         optionService.createInBatch(options);
 
         eventPublisher.publishEvent(new OptionUpdatedEvent(this));
 
-        List<Photo> photos = data.getJSONArray("photos").toJavaList(Photo.class);
+        List<Photo> photos = Arrays
+            .asList(mapper.readValue(mapper.writeValueAsString(data.get("photos")), Photo[].class));
         photoService.createInBatch(photos);
 
-        List<Post> posts = data.getJSONArray("posts").toJavaList(Post.class);
+        List<Post> posts = Arrays
+            .asList(mapper.readValue(mapper.writeValueAsString(data.get("posts")), Post[].class));
         postService.createInBatch(posts);
 
-        List<PostCategory> postCategories = data.getJSONArray("post_categories").toJavaList(PostCategory.class);
+        List<PostCategory> postCategories = Arrays.asList(mapper
+            .readValue(mapper.writeValueAsString(data.get("post_categories")),
+                PostCategory[].class));
         postCategoryService.createInBatch(postCategories);
 
-        List<PostComment> postComments = data.getJSONArray("post_comments").toJavaList(PostComment.class);
+        List<PostComment> postComments = Arrays.asList(mapper
+            .readValue(mapper.writeValueAsString(data.get("post_comments")), PostComment[].class));
         postCommentService.createInBatch(postComments);
 
-        List<PostMeta> postMetas = data.getJSONArray("post_metas").toJavaList(PostMeta.class);
+        List<PostMeta> postMetas = Arrays.asList(
+            mapper.readValue(mapper.writeValueAsString(data.get("post_metas")), PostMeta[].class));
         postMetaService.createInBatch(postMetas);
 
-        List<PostTag> postTags = data.getJSONArray("post_tags").toJavaList(PostTag.class);
+        List<PostTag> postTags = Arrays.asList(
+            mapper.readValue(mapper.writeValueAsString(data.get("post_tags")), PostTag[].class));
         postTagService.createInBatch(postTags);
 
-        List<Sheet> sheets = data.getJSONArray("sheets").toJavaList(Sheet.class);
+        List<Sheet> sheets = Arrays
+            .asList(mapper.readValue(mapper.writeValueAsString(data.get("sheets")), Sheet[].class));
         sheetService.createInBatch(sheets);
 
-        List<SheetComment> sheetComments = data.getJSONArray("sheet_comments").toJavaList(SheetComment.class);
+        List<SheetComment> sheetComments = Arrays.asList(mapper
+            .readValue(mapper.writeValueAsString(data.get("sheet_comments")),
+                SheetComment[].class));
         sheetCommentService.createInBatch(sheetComments);
 
-        List<SheetMeta> sheetMetas = data.getJSONArray("sheet_metas").toJavaList(SheetMeta.class);
+        List<SheetMeta> sheetMetas = Arrays.asList(mapper
+            .readValue(mapper.writeValueAsString(data.get("sheet_metas")), SheetMeta[].class));
         sheetMetaService.createInBatch(sheetMetas);
 
-        List<ThemeSetting> themeSettings = data.getJSONArray("theme_settings").toJavaList(ThemeSetting.class);
+        List<ThemeSetting> themeSettings = Arrays.asList(mapper
+            .readValue(mapper.writeValueAsString(data.get("theme_settings")),
+                ThemeSetting[].class));
         themeSettingService.createInBatch(themeSettings);
 
         eventPublisher.publishEvent(new ThemeUpdatedEvent(this));
+
+        List<User> users = Arrays.asList(mapper
+            .readValue(mapper.writeValueAsString(data.get("user")),
+                User[].class));
+
+        if (users.size() > 0) {
+            userService.create(users.get(0));
+        }
+    }
+
+    @Override
+    public BackupDTO exportMarkdowns(PostMarkdownParam postMarkdownParam) throws IOException {
+        // Query all Post data
+        List<PostMarkdownVO> postMarkdownList = postService.listPostMarkdowns();
+        Assert.notEmpty(postMarkdownList, "当前无文章可以导出");
+
+        // Write files to the temporary directory
+        String markdownFileTempPathName =
+            haloProperties.getBackupMarkdownDir() + IdUtil.simpleUUID().hashCode();
+        for (PostMarkdownVO postMarkdownVo : postMarkdownList) {
+            StringBuilder content = new StringBuilder();
+            Boolean needFrontMatter =
+                Optional.ofNullable(postMarkdownParam.getNeedFrontMatter()).orElse(false);
+            if (needFrontMatter) {
+                // Add front-matter
+                content.append(postMarkdownVo.getFrontMatter()).append("\n");
+            }
+            content.append(postMarkdownVo.getOriginalContent());
+            try {
+                String markdownFileName =
+                    postMarkdownVo.getTitle() + "-" + postMarkdownVo.getSlug() + ".md";
+                Path markdownFilePath = Paths.get(markdownFileTempPathName, markdownFileName);
+                if (!Files.exists(markdownFilePath.getParent())) {
+                    Files.createDirectories(markdownFilePath.getParent());
+                }
+                Path markdownDataPath = Files.createFile(markdownFilePath);
+                FileWriter fileWriter =
+                    new FileWriter(markdownDataPath.toFile(), CharsetUtil.UTF_8);
+                fileWriter.write(content.toString());
+            } catch (IOException e) {
+                throw new ServiceException("导出数据失败", e);
+            }
+        }
+
+        // Create zip path
+        String markdownZipFileName = HALO_BACKUP_MARKDOWN_PREFIX
+            + DateTimeUtils.format(LocalDateTime.now(), HORIZONTAL_LINE_DATETIME_FORMATTER)
+            + IdUtil.simpleUUID().hashCode() + ".zip";
+
+        // Create zip file
+        Path markdownZipFilePath =
+            Paths.get(haloProperties.getBackupMarkdownDir(), markdownZipFileName);
+        if (!Files.exists(markdownZipFilePath.getParent())) {
+            Files.createDirectories(markdownZipFilePath.getParent());
+        }
+        Path markdownZipPath = Files.createFile(markdownZipFilePath);
+        // Zip file
+        try (ZipOutputStream markdownZipOut = new ZipOutputStream(
+            Files.newOutputStream(markdownZipPath))) {
+
+            // Zip temporary directory
+            Path markdownFileTempPath = Paths.get(markdownFileTempPathName);
+            run.halo.app.utils.FileUtils.zip(markdownFileTempPath, markdownZipOut);
+
+            // Zip upload sub-directory
+            String uploadPathName =
+                FileHandler.normalizeDirectory(haloProperties.getWorkDir()) + UPLOAD_SUB_DIR;
+            Path uploadPath = Paths.get(uploadPathName);
+            if (Files.exists(uploadPath)) {
+                run.halo.app.utils.FileUtils.zip(uploadPath, markdownZipOut);
+            }
+
+            // Remove files in the temporary directory
+            run.halo.app.utils.FileUtils.deleteFolder(markdownFileTempPath);
+
+            // Build backup dto
+            return buildBackupDto(DATA_EXPORT_MARKDOWN_BASE_URI, markdownZipPath);
+        } catch (IOException e) {
+            throw new ServiceException("Failed to export markdowns", e);
+        }
+    }
+
+    @Override
+    public List<BackupDTO> listMarkdowns() {
+        // Ensure the parent folder exist
+        Path backupParentPath = Paths.get(haloProperties.getBackupMarkdownDir());
+        if (Files.notExists(backupParentPath)) {
+            return Collections.emptyList();
+        }
+
+        // Build backup dto
+        try (Stream<Path> subPathStream = Files.list(backupParentPath)) {
+            return subPathStream
+                .filter(backupPath -> StringUtils
+                    .startsWithIgnoreCase(backupPath.getFileName().toString(),
+                        HALO_BACKUP_MARKDOWN_PREFIX))
+                .map(backupPath -> buildBackupDto(DATA_EXPORT_MARKDOWN_BASE_URI, backupPath))
+                .sorted(Comparator.comparingLong(BackupDTO::getUpdateTime).reversed())
+                .collect(Collectors.toList());
+        } catch (IOException e) {
+            throw new ServiceException("Failed to fetch backups", e);
+        }
+    }
+
+    @Override
+    public void deleteMarkdown(String filename) {
+        Assert.hasText(filename, "File name must not be blank");
+
+        Path backupRootPath = Paths.get(haloProperties.getBackupMarkdownDir());
+
+        // Get backup path
+        Path backupPath = backupRootPath.resolve(filename);
+
+        // Check directory traversal
+        checkDirectoryTraversal(backupRootPath, backupPath);
+
+        try {
+            // Delete backup file
+            Files.delete(backupPath);
+        } catch (NoSuchFileException e) {
+            throw new NotFoundException("The file " + filename + " was not found", e);
+        } catch (IOException e) {
+            throw new ServiceException("Failed to delete backup", e);
+        }
     }
 
     /**

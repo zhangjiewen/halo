@@ -2,6 +2,11 @@ package run.halo.app.service;
 
 import com.qiniu.common.Zone;
 import com.qiniu.storage.Region;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.lang.NonNull;
@@ -12,16 +17,12 @@ import run.halo.app.model.dto.OptionDTO;
 import run.halo.app.model.dto.OptionSimpleDTO;
 import run.halo.app.model.entity.Option;
 import run.halo.app.model.enums.PostPermalinkType;
+import run.halo.app.model.enums.SheetPermalinkType;
 import run.halo.app.model.enums.ValueEnum;
 import run.halo.app.model.params.OptionParam;
 import run.halo.app.model.params.OptionQuery;
 import run.halo.app.model.properties.PropertyEnum;
 import run.halo.app.service.base.CrudService;
-
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * Option service interface.
@@ -68,7 +69,7 @@ public interface OptionService extends CrudService<Option, Integer> {
     /**
      * Update option by id.
      *
-     * @param optionId    option id must not be null.
+     * @param optionId option id must not be null.
      * @param optionParam option param must not be null.
      */
     void update(@NonNull Integer optionId, @NonNull OptionParam optionParam);
@@ -77,7 +78,7 @@ public interface OptionService extends CrudService<Option, Integer> {
      * Saves a property.
      *
      * @param property must not be null
-     * @param value    could be null
+     * @param value could be null
      */
     @Transactional
     void saveProperty(@NonNull PropertyEnum property, @Nullable String value);
@@ -106,7 +107,7 @@ public interface OptionService extends CrudService<Option, Integer> {
      * @return a map of option
      */
     @NonNull
-    Map<String, Object> listOptions(@Nullable List<String> keys);
+    Map<String, Object> listOptions(@Nullable Collection<String> keys);
 
     /**
      * Lists all option dtos.
@@ -119,7 +120,7 @@ public interface OptionService extends CrudService<Option, Integer> {
     /**
      * Pages option output dtos.
      *
-     * @param pageable    page info must not be null
+     * @param pageable page info must not be null
      * @param optionQuery optionQuery
      * @return a page of option output dto
      */
@@ -162,6 +163,17 @@ public interface OptionService extends CrudService<Option, Integer> {
     Optional<Object> getByKey(@NonNull String key);
 
     /**
+     * Gets value by key.
+     *
+     * @param key key must not be null
+     * @param valueType value type must not be null
+     * @param <T> value type
+     * @return value
+     */
+    @NonNull
+    <T> Optional<T> getByKey(@NonNull String key, @NonNull Class<T> valueType);
+
+    /**
      * Gets option value by blog property.
      *
      * @param property blog property must not be null
@@ -192,108 +204,103 @@ public interface OptionService extends CrudService<Option, Integer> {
     /**
      * Gets property value by blog property.
      *
-     * @param property     blog property must not be null
+     * @param property blog property must not be null
      * @param propertyType property type must not be null
-     * @param defaultValue default value
-     * @param <T>          property type
-     * @return property value
-     */
-    <T> T getByPropertyOrDefault(@NonNull PropertyEnum property, @NonNull Class<T> propertyType, T defaultValue);
-
-    /**
-     * Gets property value by blog property.
-     * <p>
-     * Default value from property default value.
-     *
-     * @param property     blog property must not be null
-     * @param propertyType property type must not be null
-     * @param <T>          property type
-     * @return property value
-     */
-    <T> T getByPropertyOrDefault(@NonNull PropertyEnum property, @NonNull Class<T> propertyType);
-
-    /**
-     * Gets property value by blog property.
-     *
-     * @param property     blog property must not be null
-     * @param propertyType property type must not be null
-     * @param <T>          property type
+     * @param <T> property type
      * @return property value
      */
     <T> Optional<T> getByProperty(@NonNull PropertyEnum property, @NonNull Class<T> propertyType);
 
     /**
+     * Gets property value by blog property.
+     *
+     * @param property blog property must not be null
+     * @param propertyType property type must not be null
+     * @param defaultValue default value
+     * @param <T> property type
+     * @return property value
+     */
+    <T> T getByPropertyOrDefault(@NonNull PropertyEnum property, @NonNull Class<T> propertyType,
+        T defaultValue);
+
+    /**
+     * Gets property value by blog property.
+     *
+     * Default value from property default value.
+     *
+     * @param property blog property must not be null
+     * @param propertyType property type must not be null
+     * @param <T> property type
+     * @return property value
+     */
+    <T> T getByPropertyOrDefault(@NonNull PropertyEnum property, @NonNull Class<T> propertyType);
+
+    /**
      * Gets value by key.
      *
-     * @param key          key must not be null
-     * @param valueType    value type must not be null
+     * @param key key must not be null
+     * @param valueType value type must not be null
      * @param defaultValue default value
-     * @param <T>          property type
+     * @param <T> property type
      * @return value
      */
     <T> T getByKeyOrDefault(@NonNull String key, @NonNull Class<T> valueType, T defaultValue);
 
     /**
-     * Gets value by key.
-     *
-     * @param key       key must not be null
-     * @param valueType value type must not be null
-     * @param <T>       value type
-     * @return value
-     */
-    @NonNull
-    <T> Optional<T> getByKey(@NonNull String key, @NonNull Class<T> valueType);
-
-    /**
      * Gets enum value by property.
      *
-     * @param property  property must not be blank
+     * @param property property must not be blank
      * @param valueType enum value type must not be null
-     * @param <T>       enum value type
+     * @param <T> enum value type
      * @return an optional enum value
      */
     @NonNull
-    <T extends Enum<T>> Optional<T> getEnumByProperty(@NonNull PropertyEnum property, @NonNull Class<T> valueType);
+    <T extends Enum<T>> Optional<T> getEnumByProperty(@NonNull PropertyEnum property,
+        @NonNull Class<T> valueType);
 
     /**
      * Gets enum value by property.
      *
-     * @param property     property must not be blank
-     * @param valueType    enum value type must not be null
+     * @param property property must not be blank
+     * @param valueType enum value type must not be null
      * @param defaultValue default value
-     * @param <T>          enum value type
+     * @param <T> enum value type
      * @return enum value
      */
     @Nullable
-    <T extends Enum<T>> T getEnumByPropertyOrDefault(@NonNull PropertyEnum property, @NonNull Class<T> valueType, @Nullable T defaultValue);
+    <T extends Enum<T>> T getEnumByPropertyOrDefault(@NonNull PropertyEnum property,
+        @NonNull Class<T> valueType, @Nullable T defaultValue);
 
     /**
      * Gets value enum by property.
      *
-     * @param property  property must not be blank
+     * @param property property must not be blank
      * @param valueType enum value type must not be null
-     * @param enumType  enum type must not be null
-     * @param <V>       enum value type
-     * @param <E>       value enum type
+     * @param enumType enum type must not be null
+     * @param <V> enum value type
+     * @param <E> value enum type
      * @return an optional value enum value
      */
     @NonNull
-    <V, E extends ValueEnum<V>> Optional<E> getValueEnumByProperty(@NonNull PropertyEnum property, @NonNull Class<V> valueType, @NonNull Class<E> enumType);
+    <V, E extends Enum<E> & ValueEnum<V>> Optional<E> getValueEnumByProperty(
+        @NonNull PropertyEnum property,
+        @NonNull Class<V> valueType, @NonNull Class<E> enumType);
 
     /**
      * Gets value enum by property.
      *
-     * @param property     property must not be blank
-     * @param valueType    enum value type must not be null
-     * @param enumType     enum type must not be null
+     * @param property property must not be blank
+     * @param valueType enum value type must not be null
+     * @param enumType enum type must not be null
      * @param defaultValue default value enum value
-     * @param <V>          enum value type
-     * @param <E>          value enum type
+     * @param <V> enum value type
+     * @param <E> value enum type
      * @return value enum value or null if the default value is null
      */
     @Nullable
-    <V, E extends ValueEnum<V>> E getValueEnumByPropertyOrDefault(@NonNull PropertyEnum property, @NonNull Class<V> valueType, @NonNull Class<E> enumType, @Nullable E defaultValue);
-
+    <V, E extends Enum<E> & ValueEnum<V>> E getValueEnumByPropertyOrDefault(
+        @NonNull PropertyEnum property,
+        @NonNull Class<V> valueType, @NonNull Class<E> enumType, @Nullable E defaultValue);
 
     /**
      * Gets post page size.
@@ -393,6 +400,13 @@ public interface OptionService extends CrudService<Option, Integer> {
     PostPermalinkType getPostPermalinkType();
 
     /**
+     * Get sheet permalink type.
+     *
+     * @return SheetPermalinkType
+     */
+    SheetPermalinkType getSheetPermalinkType();
+
+    /**
      * Get sheet custom prefix.
      *
      * @return sheet prefix.
@@ -454,15 +468,6 @@ public interface OptionService extends CrudService<Option, Integer> {
      * @return true or false.
      */
     Boolean isEnabledAbsolutePath();
-
-    /**
-     * Replace option url in batch.
-     *
-     * @param oldUrl old blog url.
-     * @param newUrl new blog url.
-     * @return replaced options.
-     */
-    List<OptionDTO> replaceUrl(@NonNull String oldUrl, @NonNull String newUrl);
 
     /**
      * Converts to option output dto.

@@ -1,20 +1,24 @@
 package run.halo.app.core.freemarker.tag;
 
+import static run.halo.app.model.support.HaloConst.URL_SEPARATOR;
+
 import cn.hutool.core.util.PageUtil;
 import freemarker.core.Environment;
-import freemarker.template.*;
+import freemarker.template.Configuration;
+import freemarker.template.DefaultObjectWrapperBuilder;
+import freemarker.template.TemplateDirectiveBody;
+import freemarker.template.TemplateDirectiveModel;
+import freemarker.template.TemplateException;
+import freemarker.template.TemplateModel;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 import run.halo.app.model.support.HaloConst;
 import run.halo.app.model.support.Pagination;
 import run.halo.app.model.support.RainbowPage;
 import run.halo.app.service.OptionService;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
-import static run.halo.app.model.support.HaloConst.URL_SEPARATOR;
 
 /**
  * @author ryanwang
@@ -26,14 +30,16 @@ public class PaginationTagDirective implements TemplateDirectiveModel {
     private final OptionService optionService;
 
     public PaginationTagDirective(Configuration configuration,
-                                  OptionService optionService) {
+        OptionService optionService) {
         this.optionService = optionService;
         configuration.setSharedVariable("paginationTag", this);
     }
 
     @Override
-    public void execute(Environment env, Map params, TemplateModel[] loopVars, TemplateDirectiveBody body) throws TemplateException, IOException {
-        final DefaultObjectWrapperBuilder builder = new DefaultObjectWrapperBuilder(Configuration.VERSION_2_3_25);
+    public void execute(Environment env, Map params, TemplateModel[] loopVars,
+        TemplateDirectiveBody body) throws TemplateException, IOException {
+        final DefaultObjectWrapperBuilder builder =
+            new DefaultObjectWrapperBuilder(Configuration.VERSION_2_3_25);
         if (params.containsKey(HaloConst.METHOD_KEY)) {
 
             // Get params
@@ -102,8 +108,7 @@ public class PaginationTagDirective implements TemplateDirectiveModel {
                         .append(pathSuffix);
 
                     if (page == 1) {
-                        prevPageFullPath.
-                            append(pathSuffix);
+                        prevPageFullPath.append(pathSuffix);
                     } else {
                         prevPageFullPath.append("/page/")
                             .append(page)
@@ -157,7 +162,8 @@ public class PaginationTagDirective implements TemplateDirectiveModel {
                     for (int current : rainbow) {
                         RainbowPage rainbowPage = new RainbowPage();
                         rainbowPage.setPage(current);
-                        rainbowPage.setFullPath(fullPath.toString() + current + pathSuffix + "?keyword=" + keyword);
+                        rainbowPage.setFullPath(
+                            fullPath.toString() + current + pathSuffix + "?keyword=" + keyword);
                         rainbowPage.setIsCurrent(page + 1 == current);
                         rainbowPages.add(rainbowPage);
                     }
